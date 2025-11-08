@@ -11,10 +11,14 @@ from src.utils import constants
 def get_thresh(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # bin = ColorHelper.gray2bin(gray)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    canny = cv2.Canny(blur, 42, 89)
+    blur = cv2.GaussianBlur(gray, (5, 5), 2.0)
+    canny_threshold_max = find_max_gradient_value(blur)
+    canny_threshold_tb_1 = int(canny_threshold_max * 0.1)
+    canny_threshold_tb_2 = int(canny_threshold_max * 0.2)
+    canny = do_canny_threshold(blur, canny_threshold_tb_1, canny_threshold_tb_2)
     kernel = np.ones((2, 2))
     dial = cv2.dilate(canny, kernel=kernel, iterations=2)
+    
 
     return dial
 
@@ -193,7 +197,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
                 plt.subplot(1, 2, 1)
                 plt.imshow(diff_img, 'gray')
 
-        plt.show()
+        #plt.show()
 
     # Same processing with suit images
     for train_suit in train_suits:
@@ -210,7 +214,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
                 plt.subplot(1, 2, 2)
                 plt.imshow(diff_img, 'gray')
 
-        plt.show()
+        #plt.show()
 
     if best_rank_match_diff < 2300:
         best_rank_match_name = best_rank_name
@@ -218,7 +222,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
     if best_suit_match_diff < 1000:
         best_suit_match_name = best_suit_name
 
-    plt.show()
+    #plt.show()
 
     return best_rank_match_name, best_suit_match_name
 
@@ -319,4 +323,26 @@ def eval_rank_suite(rank_suit_mapping, modelRanks, modelSuits):
 
     return pred
 
-# endregion
+def find_max_gradient_value(img_in):
+    canny_sobel_kernel_size = constants.CANNY_SOBEL_KERNEL_SIZE
+
+    im_dx = cv2.Sobel(img_in, cv2.CV_32FC1, 1, 0, None, canny_sobel_kernel_size)
+    im_dy = cv2.Sobel(img_in, cv2.CV_32FC1, 0, 1, None, canny_sobel_kernel_size)
+    im_gradient_magnitude = cv2.magnitude(im_dx, im_dy)
+    return int(np.amax(im_gradient_magnitude)) + 1
+
+def do_canny_threshold(im_blur, canny_threshold_tb_1, canny_threshold_tb_2):
+    
+    canny_threshold_1, canny_threshold_2 = get_canny_threshold_values(canny_threshold_tb_1, canny_threshold_tb_2)
+
+    im_edges = cv2.Canny(im_blur, canny_threshold_1, canny_threshold_2, None, 3, True)
+    return im_edges
+
+def get_canny_threshold_values(canny_threshold_tb_1, canny_threshold_tb_2):
+
+    if canny_threshold_tb_1 < canny_threshold_tb_2:
+        threshold_1, threshold_2 = canny_threshold_tb_1, canny_threshold_tb_2
+    else:
+        threshold_1, threshold_2 = canny_threshold_tb_2, canny_threshold_tb_1
+
+    return threshold_1, threshold_2  # Values in lower, higher order

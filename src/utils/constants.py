@@ -5,3 +5,4 @@ RANK_NAMES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 SUIT_NAMES = ['Hearts', 'Spades', 'Clubs', 'Diamonds']
 NUM_RANKS = 13
 NUM_SUITS = 4
+CANNY_SOBEL_KERNEL_SIZE = 3

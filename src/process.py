@@ -197,7 +197,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
                 plt.subplot(1, 2, 1)
                 plt.imshow(diff_img, 'gray')
 
-        #plt.show()
+        plt.show()
 
     # Same processing with suit images
     for train_suit in train_suits:
@@ -214,7 +214,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
                 plt.subplot(1, 2, 2)
                 plt.imshow(diff_img, 'gray')
 
-        #plt.show()
+        plt.show()
 
     if best_rank_match_diff < 2300:
         best_rank_match_name = best_rank_name
@@ -222,7 +222,7 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
     if best_suit_match_diff < 1000:
         best_suit_match_name = best_suit_name
 
-    #plt.show()
+    plt.show()
 
     return best_rank_match_name, best_suit_match_name
 

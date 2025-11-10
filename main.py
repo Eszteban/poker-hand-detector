@@ -84,7 +84,7 @@ for i, (img, original) in enumerate(cropped_images):
     cv2.drawContours(drawable, cnts_sort, -1, (0, 255, 0), 1)
     plt.grid(True)
     plt.subplot(1, len(cropped_images), i+1)
-    plt.imshow(img)
+    plt.imshow(img, 'gray')
     ranksuit = list()
 
     for i, cnt in enumerate(cnts_sort):

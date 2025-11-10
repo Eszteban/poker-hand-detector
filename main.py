@@ -1,115 +1,161 @@
-import time
-
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 
 from src import process
-from src.utils import display
 from src.utils.Loader import Loader
+from src.utils import display
+from src.model import Card, CardPack
 
+card_path =  'test/20251109_164730.jpg'
 
-# show debug windows for each step
-# set to False if you want to run the program with the result windows only
-debug = True
+# Eredeti kép megjelenítése
+original_image = cv2.imread(card_path)
+original_image_rgb = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+plt.figure(num="Eredeti kép")
+plt.imshow(original_image_rgb)
+plt.show()
 
-## use this if you want to use your real camera
-# url = 'https://192.168.1.173:8080'
-# cap = cv2.VideoCapture(url + "/video")
+#Kontúrok keresése
+imgResult = original_image_rgb.copy()
+imgResult2 = original_image_rgb.copy()
 
-cap = cv2.VideoCapture("test/2cards.mp4")
+thresh = process.get_thresh(imgResult)
+corners_list = process.find_corners_set(thresh, imgResult, draw=True)
+four_corners_set = corners_list
 
-frame_rate = 30
+plt.figure(num="Élek detektálása")
+plt.imshow(thresh, cmap='gray')
+plt.show()
 
-ID_WIDTH = 3
-ID_HEIGHT = 4
-ID_BRIGHTNESS = 10
+for i, corners in enumerate(corners_list):
+    top_left = corners[0][0]
+    bottom_left = corners[1][0]
+    bottom_right = corners[2][0]
+    top_right = corners[3][0]
+    
+    print(f'top_left: {top_left}')
+    print(f'bottom_left: {bottom_left}')
+    print(f'bottom_right: {bottom_right}')
+    print(f'top_right: {top_right}\n')
 
-cap.set(ID_WIDTH, 640)
-cap.set(ID_HEIGHT, 480)
-cap.set(ID_BRIGHTNESS, 150)
+#Perspektívikus torzítás
+flatten_card_set = process.find_flatten_cards(imgResult2, four_corners_set)
 
+# Több kép egy ablakban (egy sorban)
+fig, axes = plt.subplots(1, len(flatten_card_set), figsize=(4*len(flatten_card_set), 6))
+if len(flatten_card_set) == 1:
+    axes = [axes]
+for i, img_output in enumerate(flatten_card_set):
+    print(img_output.shape)
+    axes[i].imshow(img_output)           # színes képekhez
+    axes[i].axis('off')
+plt.tight_layout()
+plt.show()
 
-ranks = Loader.load_ranks('assets/imgs/ranks')
-suits = Loader.load_suits('assets/imgs/suits')
+cropped_images = process.get_corner_snip(flatten_card_set)
 
-black_img = np.zeros((300, 200))
+#Kártya sarkok kivágása    
+for i, pair in enumerate(cropped_images):
+    for j, img in enumerate(pair):
+        # cv2.imwrite(f'num{i*2+j}.jpg', img)
+        
+        plt.subplot(1, len(pair), j+1)
+        plt.imshow(img, 'gray')
 
-prev_time = 0
-flatten_card_set = []
+    plt.show()
 
-while True:
-    time_elapsed = time.time() - prev_time
+# Kontúrok keresése a kivágott sarkokon
+ranksuit_list: list = list()
 
-    success, img = cap.read()
+plt.figure(figsize=(12, 6))
+for i, (img, original) in enumerate(cropped_images):
 
-    if time_elapsed > 1. / frame_rate:
-        prev_time = time.time()
+    drawable = img.copy()
+    d2 = original.copy()
 
-        img_result = img.copy()
-        img_result2 = img.copy()
+    contours, _ = cv2.findContours(drawable, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cnts_sort = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+    cnts_sort = sorted(cnts_sort, key=lambda x: cv2.boundingRect(x)[1])
+    
+    for cnt in cnts_sort:
+        print(f'contour sorts = {cv2.contourArea(cnt)}')
 
-        thresh = process.get_thresh(img)
-        four_corners_set = process.find_corners_set(thresh, img_result, draw=True)
-        flatten_card_set = process.find_flatten_cards(img_result2, four_corners_set)
-        cropped_images = process.get_corner_snip(flatten_card_set)
+    cv2.drawContours(drawable, cnts_sort, -1, (0, 255, 0), 1)
+    plt.grid(True)
+    plt.subplot(1, len(cropped_images), i+1)
+    plt.imshow(img)
+    ranksuit = list()
 
-        if debug:
-            if len(flatten_card_set) <= 0:
-                cv2.imshow('flat', black_img)
+    for i, cnt in enumerate(cnts_sort):
+        x, y, w, h = cv2.boundingRect(cnt)
+        x2, y2 = x+w, y+h
+        crop = d2[y:y2, x:x2]
+        if(i == 0): # rank: 70, 125
+            crop = cv2.resize(crop, (70, 125), 0, 0)
+        else: # suit: 70, 100
+            crop = cv2.resize(crop, (70, 100), 0, 0)
+        # Binárizálás
+        _, crop = cv2.threshold(crop, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        crop = cv2.bitwise_not(crop)
+        ranksuit.append(crop)
 
-            for flat in flatten_card_set:
-                cv2.imshow('flat', flat)
+    ranksuit_list.append(ranksuit)
+        
+plt.show()
 
-        rank_suit_list: list = list()
+# A szám és a szín "kinyerése"
+black_img = np.zeros((120, 70))
+plt.figure(figsize=(12, 6))
+for i, ranksuit in enumerate(ranksuit_list):
+    rank = black_img
+    suit = black_img
+    try:
+        rank = ranksuit[0]
+        suit = ranksuit[1]
+    except:
+        pass
 
-        if debug and len(cropped_images) <= 0:
-            cv2.imshow("crop", black_img)
-            cv2.imshow("rank-suit", black_img)
+    plt.subplot(len(ranksuit_list), 2, i*2+1)
+    plt.imshow(rank, 'gray')
+    plt.subplot(len(ranksuit_list), 2, i*2+2)
+    plt.imshow(suit, 'gray')
 
-        for i, (img, original) in enumerate(cropped_images):
+plt.show()
 
-            if debug:
-                hori = np.concatenate((img, original), axis=1)
-                cv2.imshow("crop", hori)
+# Template matching - összehasonlítás
+train_ranks = Loader.load_ranks('assets/imgs/ranks')
+train_suits = Loader.load_suits('assets/imgs/suits')
 
-            drawable = img.copy()
-            original_copy = original.copy()
+print(train_ranks[0].img.shape)
+print(train_suits[0].img.shape)
 
-            rank_suit = process.split_rank_suit(drawable, original_copy, debug=debug)
+cardPack = CardPack()
 
-            rank_suit_list.append(rank_suit)
+for it in ranksuit_list:
+    try:
+        rank = it[0]
+        suit = it[1]
+    except:
+        continue
+    r, s = process.template_matching(rank, suit, train_ranks, train_suits, show_plt=True)
+    print(f'Predicted rank: {r}, suit: {s}\n')
+    cardPack.addCard(Card(r, s))
+    
+print("Hand:", cardPack.cards)
+print("Result:", cardPack.checkHand())
 
-        try:
-            for rank, suit in rank_suit_list:
-                rank = cv2.resize(rank, (70, 100), 0, 0)
-                suit = cv2.resize(suit, (70, 100), 0, 0)
-                if debug:
-                    h = np.concatenate((rank, suit), axis=1)
-                    cv2.imshow("rank-suit", h)
-        except:
-            cv2.imshow("rank-suit", black_img)
+# Annotált kép készítése (eredeti BGR kell a putText-hez)
 
-        rs = list[str]()
+# Szövegek listája (pl. 'AH', '7D', stb.)
+pred_texts = [f"{i.rank} {i.suit}" for i in cardPack.cards]
 
-        for _rank, _suit in rank_suit_list:
-            predict_rank, predict_suit = process.template_matching(_rank, _suit, ranks, suits)
-            prediction = f"{predict_rank} {predict_suit}"
-            rs.append(prediction)
-            print(prediction)
+# Saroklista (four_corners_set) már korábban elkészült
+process.show_text(pred_texts, four_corners_set, original_image)
 
-        process.show_text(
-            predictions=rs,
-            four_corners_set=four_corners_set,
-            img=img_result
-        )
-
-        # show the overall image
-        time.sleep(0.05)
-        cv2.imshow('Result', display.stack_images(0.55, [img_result, thresh]))
-
-    wait = cv2.waitKey(1)
-    if wait & 0xFF == ord('q'):
-        break
-
-cv2.destroyAllWindows()
-cap.release()
+# Megjelenítés matplotlib-ben (RGB konverzió)
+plt.figure(num="Felismert kártyák")
+plt.imshow(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
+plt.axis('off')
+plt.title(str(cardPack.cards) + " -> " + str(cardPack.checkHand()))
+plt.show()

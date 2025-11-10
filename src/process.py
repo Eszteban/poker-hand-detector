@@ -2,12 +2,12 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.ColorHelper import ColorHelper
+from src.utils.ColorHelper import ColorHelper
 from src.utils.DistanceHelper import DistanceHelper
 from src.utils import constants
 
 
-
+#Used
 def get_thresh(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     # bin = ColorHelper.gray2bin(gray)
@@ -22,7 +22,7 @@ def get_thresh(img):
 
     return dial
 
-
+#Used
 def find_corners_set(img, original, draw=False):
     # find the set of contours on the threshed image
     contours, hier = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
@@ -75,35 +75,55 @@ def find_corners_set(img, original, draw=False):
 
     return four_corners_set
 
+#used
+def reorder_card_corners(corners):
+    """
+    corners: [ [ [x,y] ], ... ] formátum (a mostani listád)
+    Visszaad: [top_left, bottom_left, bottom_right, top_right]
+    """
+    pts = np.array([c[0] for c in corners], dtype=np.float32)  # (4,2)
+    s = pts.sum(axis=1)
+    d = pts[:, 0] - pts[:, 1]
 
+    tl = pts[np.argmin(s)]
+    br = pts[np.argmax(s)]
+    tr = pts[np.argmax(d)]
+    bl = pts[np.argmin(d)]
+
+    # Kívánt sorrend: TL, BL, BR, TR
+    return [tl, bl, br, tr]
+
+#Used
 def find_flatten_cards(img, set_of_corners, debug=False):
     width, height = 200, 300
     img_outputs = []
 
-    for i, corners in enumerate(set_of_corners):
-        top_left = corners[0][0]
-        bottom_left = corners[1][0]
-        bottom_right = corners[2][0]
-        top_right = corners[3][0]
+    for corners in set_of_corners:
+        # Sarokok robusztus újrarendezése
+        tl, bl, br, tr = reorder_card_corners(corners)
 
-        vertical_left = DistanceHelper.euclidean(top_left[0], top_left[1], bottom_left[0], bottom_left[1])
-        horizontal_top = DistanceHelper.euclidean(top_left[0], top_left[1], top_right[0], top_right[1])
+        # Él hosszok (magasság vs szélesség ellenőrzéshez)
+        vertical_left = DistanceHelper.euclidean(tl[0], tl[1], bl[0], bl[1])
+        horizontal_top = DistanceHelper.euclidean(tl[0], tl[1], tr[0], tr[1])
 
-        # get the 4 corners of the card
-        pts1 = np.float32([top_left, bottom_left, bottom_right, top_right])
-        # now define which corner we are referring to
+        pts1 = np.float32([tl, bl, br, tr])
         pts2 = np.float32([[0, 0], [0, height], [width, height], [width, 0]])
 
-        # transformation matrix
         matrix = cv2.getPerspectiveTransform(pts1, pts2)
-
         img_output = cv2.warpPerspective(img, matrix, (width, height))
+
+        # Ha a "felső" él hosszabb, akkor a kártya feküdt: forgassuk vissza álló formára
+        if horizontal_top > vertical_left:
+            img_output = cv2.rotate(img_output, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
         img_outputs.append(img_output)
 
+        if debug:
+            print(f'v={vertical_left:.1f}, h={horizontal_top:.1f}')
+
     return img_outputs
 
-
+#Used
 def get_corner_snip(flattened_images: list):
     corner_images = []
     for img in flattened_images:
@@ -128,50 +148,9 @@ def get_corner_snip(flattened_images: list):
     return corner_images
 
 
-def split_rank_suit(img, original, debug=False) -> list:
-    """
-    :param debug: display opencv or not
-    :param img:
-    :param original: original image
-    :return: list of image, index 0: rank, index 1: suit
-    """
-
-    contours, _ = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    cnts_sort = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
-    cnts_sort = sorted(cnts_sort, key=lambda x: cv2.boundingRect(x)[1])
-
-    cv2.drawContours(img, cnts_sort, -1, (0, 255, 0), 1)
-
-    ranksuit = list()
-
-    _rank = None
-
-    for i, cnt in enumerate(cnts_sort):
-
-        x, y, w, h = cv2.boundingRect(cnt)
-        x2, y2 = x + w, y + h
-
-        crop = original[y:y2, x:x2]
-
-        if i == 0:  # rank: 70, 125
-            crop = cv2.resize(crop, (70, 125), 0, 0)
-            _rank = crop
-        else:  # suit: 70, 100
-            crop = cv2.resize(crop, (70, 100), 0, 0)
-            if debug and _rank is not None:
-                r = cv2.resize(_rank, (70, 100), 0, 0)
-                s = cv2.resize(crop, (70, 100), 0, 0)
-                h = np.concatenate((r, s), axis=1)
-                h = cv2.resize(h, (250, 200), 0, 0)
-                cv2.imshow("crop2", h)
-
-        crop = ColorHelper.gray2bin(crop)
-        crop = ColorHelper.reverse(crop)
-        ranksuit.append(crop)
-
-    return ranksuit
 
 
+#Used
 def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> tuple[str, str]:
     """Finds best rank and suit matches for the query card. Differences
     the query card rank and suit images with the train rank and suit images.
@@ -194,10 +173,10 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
 
             if show_plt:
                 print(f'diff score: {rank_diff}')
-                plt.subplot(1, 2, 1)
-                plt.imshow(diff_img, 'gray')
+                #plt.subplot(1, 2, 1)
+                #plt.imshow(diff_img, 'gray')
 
-        plt.show()
+        #plt.show()
 
     # Same processing with suit images
     for train_suit in train_suits:
@@ -211,10 +190,10 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
 
             if show_plt:
                 print(f'diff score: {suit_diff}')
-                plt.subplot(1, 2, 2)
-                plt.imshow(diff_img, 'gray')
+                #plt.subplot(1, 2, 2)
+                #plt.imshow(diff_img, 'gray')
 
-        plt.show()
+        #plt.show()
 
     if best_rank_match_diff < 2300:
         best_rank_match_name = best_rank_name
@@ -222,10 +201,9 @@ def template_matching(rank, suit, train_ranks, train_suits, show_plt=False) -> t
     if best_suit_match_diff < 1000:
         best_suit_match_name = best_suit_name
 
-    plt.show()
+    #plt.show()
 
     return best_rank_match_name, best_suit_match_name
-
 
 def show_text(predictions: list[str], four_corners_set, img):
     for i, prediction in enumerate(predictions):
@@ -236,92 +214,7 @@ def show_text(predictions: list[str], four_corners_set, img):
         half_y = corners_flat[0][1] - 40
 
         font = cv2.FONT_HERSHEY_COMPLEX
-        cv2.putText(img, prediction, (start_x, half_y), font, 0.8, (50, 205, 50), 2, cv2.LINE_AA)
-
-
-# region trash
-
-# def split_rank_and_suit(cropped_images):
-#     rank_suit_mapping = []
-#
-#     for img, original in cropped_images:
-#
-#         # find the contours (we want the rank and suit contours)
-#         contours, hier = cv2.findContours(img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-#
-#         # find the largest two contours
-#         highest_two = dict()
-#         for cnt in contours:
-#             area = cv2.contourArea(cnt)
-#             # if area < 2000, its not of relevance to us, so just fill it with black
-#             if area < 2000:
-#                 cv2.fillPoly(img, pts=[cnt], color=0)
-#                 continue
-#
-#             perimeter = cv2.arcLength(cnt, closed=True)
-#             # append the contour and the perimeter
-#             highest_two[area] = [cnt, perimeter]
-#
-#         # select the largest two in this image
-#         mapping = []
-#
-#         for area in sorted(highest_two)[0:2]:
-#             cnt = highest_two[area][0]
-#             perimeter = highest_two[area][1]
-#             approx = cv2.approxPolyDP(cnt, 0.02 * perimeter, closed=True)
-#             x, y, w, h = cv2.boundingRect(approx)
-#             crop = original[y:y + h][:]
-#
-#             sharpened = Augment.contrast(crop, 30)
-#
-#             for i in range(sharpened.shape[0]):
-#                 for j in range(sharpened.shape[1]):
-#                     if sharpened[i, j] < 220:
-#                         sharpened[i, j] = max(0, sharpened[i, j] - 100)
-#                     if sharpened[i, j] > 221:
-#                         sharpened[i, j] = 255
-#
-#             mapping.append([sharpened, y])
-#
-#         # store rank and then suit
-#         mapping.sort(key=lambda x: x[1])
-#
-#         for m in mapping:
-#             del m[1]
-#
-#         # # now we don't need the last item so we can remove
-#         if mapping and len(mapping) == 2:
-#             rank_suit_mapping.append([mapping[0][0], mapping[1][0]])
-#
-#     return rank_suit_mapping
-
-def eval_rank_suite(rank_suit_mapping, modelRanks, modelSuits):
-    pred = []
-
-    for rank, suit in rank_suit_mapping:
-        # resize the rank and suit to our desired size
-        rank = cv2.resize(rank, (constants.CARD_WIDTH, constants.CARD_HEIGHT))
-        suit = cv2.resize(suit, (constants.CARD_WIDTH, constants.CARD_HEIGHT))
-
-        # get the predictions for suit and rank
-        bestSuitPredictions = model_wrapper.model_predict(modelSuits, suit, 'suits')  # min(suitDict, key=suitDict.get)
-        bestRankPredictions = model_wrapper.model_predict(modelRanks, rank, 'ranks')  # min(rankDict, key=rankDict.get)
-
-        # get the names and percentage of best and second best suits and ranks
-        bestSuitName, bestSuitPer = model_wrapper.model_predictions_to_name(bestSuitPredictions)
-        bestRankName, bestRankPer = model_wrapper.model_predictions_to_name(bestRankPredictions)
-        sbestSuitName, sbestSuitPer = model_wrapper.model_predictions_to_name(bestSuitPredictions, loc=-2)
-        sbestRankName, sbestRankPer = model_wrapper.model_predictions_to_name(bestRankPredictions, loc=-2)
-
-        # show both guesses
-        totalPer = bestRankPer + sbestRankPer + bestSuitPer + sbestSuitPer
-        guess1 = '{}/{}/{}%'.format(bestRankName, bestSuitName, round(((bestSuitPer + bestRankPer) / totalPer) * 100))
-        guess2 = '{}/{}/{}%'.format(sbestRankName, sbestSuitName,
-                                    round(((sbestSuitPer + sbestRankPer) / totalPer) * 100))
-
-        pred.append('{}\n{}'.format(guess1, guess2))
-
-    return pred
+        cv2.putText(img, prediction, (start_x, half_y), font, 2, (50, 205, 50), 2, cv2.LINE_AA)
 
 def find_max_gradient_value(img_in):
     canny_sobel_kernel_size = constants.CANNY_SOBEL_KERNEL_SIZE
